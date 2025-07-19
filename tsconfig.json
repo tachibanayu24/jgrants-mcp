@@ -1,0 +1,20 @@
+{
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "Node16",
+    "lib": ["ES2022"],
+    "outDir": "./build",
+    "rootDir": "./",
+    "strict": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "forceConsistentCasingInFileNames": true,
+    "moduleResolution": "Node16",
+    "resolveJsonModule": true,
+    "declaration": false,
+    "removeComments": true,
+    "types": ["node"]
+  },
+  "include": ["index.ts", "types.ts"],
+  "exclude": ["node_modules", "build", "docs"]
+}

@@ -1,0 +1,44 @@
+{
+  "name": "jgrants-mcp",
+  "version": "0.1.0",
+  "description": "日本の補助金情報を検索するためのMCP (Model Context Protocol) サーバー",
+  "type": "module",
+  "bin": {
+    "jgrants-mcp": "./build/index.js"
+  },
+  "scripts": {
+    "build": "tsc && chmod +x build/index.js",
+    "dev": "tsx index.ts",
+    "inspect": "npx @modelcontextprotocol/inspector node build/index.js",
+    "prepublishOnly": "npm run build"
+  },
+  "author": "tachibanayu24",
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.0.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.0.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "jgrants",
+    "補助金",
+    "日本"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tachibanayu24/jgrants-mcp.git"
+  },
+  "bugs": {
+    "url": "https://github.com/tachibanayu24/jgrants-mcp/issues"
+  },
+  "homepage": "https://github.com/tachibanayu24/jgrants-mcp#readme"
+}

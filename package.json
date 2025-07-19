@@ -6,6 +6,9 @@
   "bin": {
     "jgrants-mcp": "./build/index.js"
   },
+  "files": [
+    "build/"
+  ],
   "scripts": {
     "build": "tsc && chmod +x build/index.js",
     "dev": "tsx index.ts",

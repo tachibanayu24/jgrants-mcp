@@ -2,6 +2,10 @@
 
 日本の補助金情報を検索するための MCP (Model Context Protocol) サーバー
 
+<a href="https://glama.ai/mcp/servers/@tachibanayu24/jgrants-mcp">
+  <img width="380" height="200" src="https://glama.ai/mcp/servers/@tachibanayu24/jgrants-mcp/badge" alt="jgrants-mcp MCP server" />
+</a>
+
 ## 概要
 
 jgrants-mcp は、jGrants（デジタル庁が運営する補助金電子申請システム）の公開 API をラップした MCP サーバーです。LLM から MCP を経由して日本の補助金情報に簡単にアクセスできます。

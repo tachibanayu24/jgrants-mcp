@@ -1,5 +1,17 @@
 // Type definitions for jGrants API responses
 
+export interface AttachmentListItem {
+  index: number; // download_attachment に渡すそのままの index
+  name: string;
+  sizeBytes: number; // Base64 デコード後の実バイトサイズ
+}
+
+export interface AttachmentGroup {
+  count: number;
+  hasAttachments: boolean;
+  attachments: AttachmentListItem[];
+}
+
 export interface SubsidyListResponse {
   metadata: {
     type: string;
@@ -59,3 +71,14 @@ export interface SubsidyDetailResponse {
     }>;
   }>;
 }
+
+export type SubsidyDetail = SubsidyDetailResponse["result"][number];
+
+export type SubsidyDetailSummary = Omit<
+  SubsidyDetail,
+  "application_guidelines" | "outline_of_grant" | "application_form"
+> & {
+  application_guidelines?: AttachmentGroup;
+  outline_of_grant?: AttachmentGroup;
+  application_form?: AttachmentGroup;
+};

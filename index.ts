@@ -7,7 +7,11 @@ import {
   ListToolsRequestSchema,
 } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
-import { SubsidyListResponse, SubsidyDetailResponse } from "./types.js";
+import {
+  SubsidyListResponse,
+  SubsidyDetailResponse,
+  SubsidyDetailSummary,
+} from "./types.js";
 
 const API_BASE_URL = "https://api.jgrants-portal.go.jp/exp/v1/public";
 
@@ -22,7 +26,11 @@ const GetSubsidyDetailSchema = z.object({
 
 const DownloadAttachmentSchema = z.object({
   subsidy_id: z.string(),
-  category: z.enum(["application_guidelines", "outline_of_grant", "application_form"]),
+  category: z.enum([
+    "application_guidelines",
+    "outline_of_grant",
+    "application_form",
+  ]),
   index: z.number().int().min(0),
 });
 
@@ -45,7 +53,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     tools: [
       {
         name: "list_subsidies",
-        description: "Search for subsidies currently accepting applications using the specified keyword. Default is '補助金' (subsidy).",
+        description:
+          "Search for subsidies currently accepting applications using the specified keyword. Default is '補助金' (subsidy).",
         inputSchema: {
           type: "object",
           properties: {
@@ -59,7 +68,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "get_subsidy_detail",
-        description: "Get detailed information about a specific subsidy. Use the subsidy ID, not the title.",
+        description:
+          "Get detailed information about a specific subsidy. Use the subsidy ID, not the title.",
         inputSchema: {
           type: "object",
           properties: {
@@ -73,7 +83,8 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
       },
       {
         name: "download_attachment",
-        description: "Get the download URL for a subsidy's attachment document.",
+        description:
+          "Download a subsidy's attachment document. Returns the file data in base64 encoding along with metadata. First call get_subsidy_detail to see the attachments array for each category (application_guidelines, outline_of_grant, application_form), then use the 'index' from attachments[n].index to download the specific file.",
         inputSchema: {
           type: "object",
           properties: {
@@ -83,7 +94,11 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
             },
             category: {
               type: "string",
-              enum: ["application_guidelines", "outline_of_grant", "application_form"],
+              enum: [
+                "application_guidelines",
+                "outline_of_grant",
+                "application_form",
+              ],
               description: "Attachment category",
             },
             index: {
@@ -103,7 +118,7 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
     case "list_subsidies": {
-      const args = ListSubsidiesSchema.parse(request.params.arguments);
+      const args = ListSubsidiesSchema.parse(request.params.arguments ?? {});
       const params = new URLSearchParams({
         keyword: args.keyword,
         sort: "acceptance_end_datetime",
@@ -114,9 +129,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       try {
         const response = await fetch(`${API_BASE_URL}/subsidies?${params}`);
         if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
+          const errorBody = await response.text();
+          throw new Error(`API error: ${response.status} - ${errorBody}`);
         }
-        const data = await response.json() as SubsidyListResponse;
+        const data = (await response.json()) as SubsidyListResponse;
         return {
           content: [
             {
@@ -124,13 +140,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: JSON.stringify(data, null, 2),
             },
           ],
+          structuredContent: data,
         };
       } catch (error) {
         return {
           content: [
             {
               type: "text",
-              text: `Error occurred: ${error instanceof Error ? error.message : "Unknown error"}`,
+              text: `Error occurred: ${
+                error instanceof Error ? error.message : "Unknown error"
+              }`,
             },
           ],
         };
@@ -141,11 +160,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const args = GetSubsidyDetailSchema.parse(request.params.arguments);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/subsidies/id/${args.subsidy_id}`);
+        const response = await fetch(
+          `${API_BASE_URL}/subsidies/id/${args.subsidy_id}`
+        );
         if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
+          const errorBody = await response.text();
+          throw new Error(`API error: ${response.status} - ${errorBody}`);
         }
-        const data = await response.json() as SubsidyDetailResponse;
+        const data = (await response.json()) as SubsidyDetailResponse;
 
         // Check result
         if (!data.result || data.result.length === 0) {
@@ -161,37 +183,75 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const subsidyInfo = data.result[0];
 
-        // Create modified subsidy info without base64 data
-        const modifiedSubsidyInfo: Record<string, unknown> = { ...subsidyInfo };
-        
-        // Remove base64 data from attachments and add URLs
-        const attachmentCategories = ["application_guidelines", "outline_of_grant", "application_form"] as const;
-        for (const category of attachmentCategories) {
-          if (subsidyInfo[category] && Array.isArray(subsidyInfo[category])) {
-            modifiedSubsidyInfo[category] = subsidyInfo[category]!.map((attachment, index) => {
-              const { data, ...rest } = attachment;
-              return {
-                ...rest,
-                url: `https://your-mcp-server.example.com/subsidies/${subsidyInfo.id}/${category}/${index}`,
-              };
-            });
-          }
-        }
+        // 添付ファイルは軽量メタ情報（index, name, サイズ等）のみ返し、実データは download_attachment で取得
+        // Base64 文字列長から概算バイトサイズを計算（デコードコストを回避）
+        const calculateBase64Size = (base64: string): number => {
+          // 改行などの空白文字を除去（API が 76 文字ごとの改行付きで返すケースに対応）
+          const cleanBase64 = base64.replace(/\s+/g, "");
+          const paddingCount = cleanBase64.endsWith("==")
+            ? 2
+            : cleanBase64.endsWith("=")
+              ? 1
+              : 0;
+          return Math.floor((cleanBase64.length * 3) / 4) - paddingCount;
+        };
+
+        // 添付配列から軽量メタ情報を生成する共通ヘルパー
+        const buildAttachmentList = (
+          attachments?: Array<{ name: string; data: string }>
+        ) =>
+          attachments?.map((attachment, index) => ({
+            index,
+            name: attachment.name,
+            sizeBytes: calculateBase64Size(attachment.data),
+          })) ?? [];
+
+        const applicationGuidelinesAttachments = buildAttachmentList(
+          subsidyInfo.application_guidelines
+        );
+        const outlineOfGrantAttachments = buildAttachmentList(
+          subsidyInfo.outline_of_grant
+        );
+        const applicationFormAttachments = buildAttachmentList(
+          subsidyInfo.application_form
+        );
+
+        const subsidySummary: SubsidyDetailSummary = {
+          ...subsidyInfo,
+          application_guidelines: {
+            count: applicationGuidelinesAttachments.length,
+            hasAttachments: applicationGuidelinesAttachments.length > 0,
+            attachments: applicationGuidelinesAttachments,
+          },
+          outline_of_grant: {
+            count: outlineOfGrantAttachments.length,
+            hasAttachments: outlineOfGrantAttachments.length > 0,
+            attachments: outlineOfGrantAttachments,
+          },
+          application_form: {
+            count: applicationFormAttachments.length,
+            hasAttachments: applicationFormAttachments.length > 0,
+            attachments: applicationFormAttachments,
+          },
+        };
 
         return {
           content: [
             {
               type: "text",
-              text: JSON.stringify(modifiedSubsidyInfo, null, 2),
+              text: JSON.stringify(subsidySummary, null, 2),
             },
           ],
+          structuredContent: subsidySummary,
         };
       } catch (error) {
         return {
           content: [
             {
               type: "text",
-              text: `Error occurred: ${error instanceof Error ? error.message : "Unknown error"}`,
+              text: `Error occurred: ${
+                error instanceof Error ? error.message : "Unknown error"
+              }`,
             },
           ],
         };
@@ -202,11 +262,14 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       const args = DownloadAttachmentSchema.parse(request.params.arguments);
 
       try {
-        const response = await fetch(`${API_BASE_URL}/subsidies/id/${args.subsidy_id}`);
+        const response = await fetch(
+          `${API_BASE_URL}/subsidies/id/${args.subsidy_id}`
+        );
         if (!response.ok) {
-          throw new Error(`API error: ${response.status}`);
+          const errorBody = await response.text();
+          throw new Error(`API error: ${response.status} - ${errorBody}`);
         }
-        const data = await response.json() as SubsidyDetailResponse;
+        const data = (await response.json()) as SubsidyDetailResponse;
 
         if (!data.result || data.result.length === 0) {
           return {
@@ -221,7 +284,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
         const subsidyInfo = data.result[0];
 
-        if (!subsidyInfo[args.category] || !Array.isArray(subsidyInfo[args.category])) {
+        if (
+          !subsidyInfo[args.category] ||
+          !Array.isArray(subsidyInfo[args.category])
+        ) {
           return {
             content: [
               {
@@ -244,21 +310,44 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           };
         }
 
-        const downloadUrl = `https://your-mcp-server.example.com/subsidies/${subsidyInfo.id}/${args.category}/${args.index}`;
+        const attachment = attachments[args.index];
+        const actualByteSize = Buffer.from(attachment.data, "base64").length;
+
+        const output = {
+          subsidy_id: subsidyInfo.id,
+          subsidy_name: subsidyInfo.name,
+          category: args.category,
+          index: args.index,
+          file_name: attachment.name,
+          data: attachment.data,
+          data_size_bytes: actualByteSize,
+          encoding: "base64" as const,
+        };
+
         return {
           content: [
             {
               type: "text",
-              text: `Attachment download URL: ${downloadUrl}`,
+              text: JSON.stringify(
+                {
+                  ...output,
+                  data: `[Base64 data: ${actualByteSize} bytes]`,
+                },
+                null,
+                2
+              ),
             },
           ],
+          structuredContent: output,
         };
       } catch (error) {
         return {
           content: [
             {
               type: "text",
-              text: `Error occurred: ${error instanceof Error ? error.message : "Unknown error"}`,
+              text: `Error occurred: ${
+                error instanceof Error ? error.message : "Unknown error"
+              }`,
             },
           ],
         };
@@ -273,7 +362,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 // Main function
 async function main() {
   const transport = new StdioServerTransport();
-  
+
   await server.connect(transport);
   console.error("jGrants MCP server started");
 }

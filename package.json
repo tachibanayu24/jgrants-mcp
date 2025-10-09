@@ -1,6 +1,6 @@
 {
   "name": "jgrants-mcp",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "日本の補助金情報を検索するためのMCP (Model Context Protocol) サーバー",
   "type": "module",
   "bin": {
